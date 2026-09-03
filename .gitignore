@@ -1,0 +1,51 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Account stores — NEVER commit (credentials / tokens)
+accounts.json
+accounts.enc
+accounts.*.migrated
+accounts.json.migrated
+
+# Local message history and per-user display settings
+messages.db
+messages.db-journal
+display_settings.json
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Build. The packaged app now sits next to src/ rather than under dist/:
+# the launcher at the root and the runtime tree it loads beside it.
+build/
+dist/
+/All-in-one-Email.exe
+/_internal/
+installer/Output/
+*.egg-info/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
