@@ -1,0 +1,30 @@
+[project]
+name = "email-aggregator"
+version = "0.1.0"
+description = "Unified console client for Gmail, Outlook, Mail.ru and other IMAP/SMTP mailboxes"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "argon2-cffi>=23.1",
+    "cryptography>=43",
+    "dependency-injector>=4.49.1",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "pyside6>=6.11",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "sqlalchemy>=2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.0",
+    "pyinstaller>=6.0",
+]
+
+[tool.ruff.lint]
+select = ["I"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
