@@ -1,31 +1,31 @@
-# src/main/dependency_injection.py
-
 from dependency_injector import containers, providers
 
-from src.adapter.mail.encrypted_account_repository import EncryptedAccountRepository
-from src.adapter.mail.imap_smtp_adapter import ImapSmtpMailAdapter
-from src.adapter.mail.json_display_settings_repository import (
+from src.adapter.database.sqlite_message_store import SqliteMessageStore
+from src.adapter.imap.imap_smtp_adapter import ImapSmtpMailAdapter
+from src.adapter.imap.oauth_token_provider import OAuthTokenProvider
+from src.adapter.repository.encrypted_account_repository import (
+    EncryptedAccountRepository,
+)
+from src.adapter.repository.json_display_settings_repository import (
     JsonDisplaySettingsRepository,
 )
-from src.adapter.mail.oauth_token_provider import OAuthTokenProvider
-from src.adapter.mail.sqlite_message_store import SqliteMessageStore
-from src.application.mail.interfaces.i_account_repository import IAccountRepository
-from src.application.mail.interfaces.i_display_settings_repository import (
+from src.application.interfaces.i_account_repository import IAccountRepository
+from src.application.interfaces.i_display_settings_repository import (
     IDisplaySettingsRepository,
 )
-from src.application.mail.interfaces.i_fetch_all_inboxes_usecase import (
+from src.application.interfaces.i_fetch_all_inboxes_usecase import (
     IFetchAllInboxesUseCase,
 )
-from src.application.mail.interfaces.i_fetch_inbox_usecase import IFetchInboxUseCase
-from src.application.mail.interfaces.i_mail_adapter import IMailAdapter
-from src.application.mail.interfaces.i_message_store import IMessageStore
-from src.application.mail.interfaces.i_oauth_token_provider import IOAuthTokenProvider
-from src.application.mail.interfaces.i_send_message_usecase import ISendMessageUseCase
-from src.application.mail.usecases.fetch_all_inboxes_usecase import (
+from src.application.interfaces.i_fetch_inbox_usecase import IFetchInboxUseCase
+from src.application.interfaces.i_mail_adapter import IMailAdapter
+from src.application.interfaces.i_message_store import IMessageStore
+from src.application.interfaces.i_oauth_token_provider import IOAuthTokenProvider
+from src.application.interfaces.i_send_message_usecase import ISendMessageUseCase
+from src.application.usecases.fetch_all_inboxes_usecase import (
     FetchAllInboxesUseCase,
 )
-from src.application.mail.usecases.fetch_inbox_usecase import FetchInboxUseCase
-from src.application.mail.usecases.send_message_usecase import SendMessageUseCase
+from src.application.usecases.fetch_inbox_usecase import FetchInboxUseCase
+from src.application.usecases.send_message_usecase import SendMessageUseCase
 from src.main.config import Config
 
 

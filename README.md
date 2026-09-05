@@ -26,9 +26,16 @@ Clean layered architecture:
 
 ```
 src/
-  adapter/mail/        IMAP/SMTP adapter, provider presets, JSON/encrypted account store
-  application/mail/    dto/ interfaces/ usecases/ — business logic, no I/O
-  main/                config, DI container, GUI and console entry points
+  adapter/
+    imap/           IMAP/SMTP adapter, provider presets, OAuth2 token provider
+    security/        credential encryption (AES-256-GCM/Argon2id), safe file I/O
+    repository/      encrypted account store, display-settings store
+    database/        SQLite message history
+  application/
+    dto/             data transfer objects
+    interfaces/      ports the use cases depend on (IMailAdapter, IAccountRepository, ...)
+    usecases/        business logic, no I/O
+  main/              config, DI container, GUI and console entry points
 ```
 
 Dependencies are wired through `dependency-injector`; use cases only know
@@ -41,7 +48,7 @@ Graphical interface (Qt / PySide6):
 
 ```bash
 uv sync
-uv run python -m src.main.qt_gui
+uv run python run.py
 ```
 
 Console mode:
@@ -203,7 +210,7 @@ A few things that break if forgotten:
   means the user ends up with two installations side by side.
 - **Uninstalling doesn't touch user data.** `accounts.enc`, `messages.db`,
   and settings live in `%APPDATA%\EmailAggregator`
-  (see `_redirect_data_when_frozen` in `qt_gui.py`); the uninstaller leaves
+  (see `_redirect_data_when_frozen` in `run.py`); the uninstaller leaves
   them alone, so reinstalling finds mail history and accounts still there.
 - **Don't add `collect_all('PySide6')` back to the `.spec`.** It used to
   duplicate every Qt library in the bundle; PyInstaller's built-in hook
