@@ -1,180 +1,218 @@
 # email-aggregator
 
-Один консольный клиент, который объединяет несколько почтовых ящиков — Gmail,
-Outlook, Mail.ru, Yandex и любые другие сервисы с IMAP/SMTP — в единый интерфейс:
-получает и отправляет письма через все аккаунты сразу.
+A single client that unifies several mailboxes — Gmail, Outlook, Mail.ru,
+Yandex, and any other IMAP/SMTP service — into one interface: fetch and send
+mail across all accounts at once.
 
-Пока только консоль; интерфейс планируется позже, поэтому вся логика вынесена в
-слой usecase-ов и не зависит от способа ввода/вывода.
+The GUI is the primary way to use it (Qt/PySide6); a console mode also exists,
+built on the same use-case layer, which stays independent of how input/output
+happens.
 
-## Идея
+## Idea
 
-Gmail, Outlook, Mail.ru и прочие отличаются лишь адресами серверов IMAP/SMTP.
-Поэтому здесь один универсальный адаптер `ImapSmtpMailAdapter`, а различия
-провайдеров сведены к пресетам хостов/портов в `provider_presets.py`. Добавить
-новый сервис — это одна запись в пресетах.
+Gmail, Outlook, Mail.ru, and the rest differ only in their IMAP/SMTP server
+addresses. So there's one universal adapter, `ImapSmtpMailAdapter`, and
+provider differences are reduced to host/port presets in
+`provider_presets.py`. Adding a new service is just one more entry in the
+presets.
 
-«Единый ящик» — это usecase `FetchAllInboxesUseCase`: он забирает все аккаунты
-параллельно (`asyncio.gather`) и сливает письма в один список, отсортированный
-по дате. Падение одного аккаунта не роняет остальные.
+The "unified inbox" is the `FetchAllInboxesUseCase`: it pulls every account in
+parallel (`asyncio.gather`) and merges the messages into one list sorted by
+date. One account failing doesn't take down the rest.
 
-## Архитектура
+## Architecture
 
-Чистая слоёная архитектура (как в `random-watch`):
+Clean layered architecture:
 
 ```
 src/
-  adapter/mail/        IMAP/SMTP-адаптер, пресеты провайдеров, JSON-хранилище аккаунтов
-  application/mail/    dto/ interfaces/ usecases/ — бизнес-логика, без I/O
-  main/                config, DI-контейнер, консольное меню
+  adapter/mail/        IMAP/SMTP adapter, provider presets, JSON/encrypted account store
+  application/mail/    dto/ interfaces/ usecases/ — business logic, no I/O
+  main/                config, DI container, GUI and console entry points
 ```
 
-Зависимости связываются через `dependency-injector`; usecase-ы знают только про
-интерфейсы (`IMailAdapter`, `IAccountRepository`), а не про конкретные классы.
+Dependencies are wired through `dependency-injector`; use cases only know
+about interfaces (`IMailAdapter`, `IAccountRepository`), never concrete
+classes.
 
-## Запуск
+## Running from source
 
-Графический интерфейс (Qt / PySide6):
+Graphical interface (Qt / PySide6):
 
 ```bash
 uv sync
 uv run python -m src.main.qt_gui
 ```
 
-Консольный режим:
+Console mode:
 
 ```bash
 uv run python -m src
 ```
 
-GUI и консоль используют **одни и те же** usecase'ы из DI-контейнера. Между ними —
-`mail_service.py`: синхронный фасад, который превращает async-usecase'ы в
-JSON-совместимые словари (`asyncio.run` внутри). GUI зовёт его методы в
-`QThreadPool` и получает результат сигналами, поэтому окно не подвисает на сети.
+Both the GUI and the console share the **same** use cases from the DI
+container. Between them sits `mail_service.py`: a synchronous facade that
+turns the async use cases into JSON-compatible dicts (`asyncio.run` inside).
+The GUI calls its methods from a `QThreadPool` and gets results back via
+signals, so the window never freezes on network calls.
 
-Оформление сделано по мотивам `neural-background.html`:
+The look is inspired by `neural-background.html`:
 
-- `qt_neural.py` — анимированный «нейросетевой» фон (`QPainter` + `QTimer`,
-  свечение узлов через радиальные градиенты, соединения янтарными линиями);
-- `qt_theme.py` — тёмная янтарная палитра, QSS (скругления, стеклянные карточки)
-  и загрузка Google-шрифтов Cormorant Garamond / Barlow через `QFontDatabase`
-  (фолбэк на Georgia / Segoe UI, если шрифтов нет);
-- `qt_gui.py` — окно, левый сайдбар папок, список писем, чтение письма и диалоги
-  (Compose / Accounts / Add с OAuth device-flow / Фильтр).
+- `qt_neural.py` — an animated "neural network" background (`QPainter` +
+  `QTimer`, glowing nodes via radial gradients, amber connection lines);
+- `qt_theme.py` — a dark amber palette, QSS (rounded corners, glass-panel
+  cards), and Google Fonts Cormorant Garamond / Barlow loaded via
+  `QFontDatabase` (falling back to Georgia / Segoe UI if the fonts aren't
+  found);
+- `qt_gui.py` — the main window: a folder sidebar, message list, reading pane,
+  and dialogs (Compose / Accounts / Add account with OAuth device flow /
+  Filter).
 
-### Папки, история и чтение
+### Folders, history, and reading
 
-- Слева — вкладки **Входящие / Отправленные / Спам**. Логические папки
-  сопоставляются реальным именам IMAP по special-use флагам (`\Sent`, `\Junk`,
-  RFC 6154) с фолбэком на локализованные имена — см. `imap_smtp_adapter.py`.
-- **История сообщений** хранится локально в SQLite (`messages.db`,
-  `sqlite_message_store.py`) через SQLAlchemy ORM: при каждом обновлении письма
-  (с телом) складываются в базу по стабильному IMAP UID, поэтому папки помнят
-  содержимое между запусками, письма остаются даже если сервер их убрал, а тело
-  открывается мгновенно без повторной загрузки.
-- Клик по письму открывает его в режиме чтения (QtWebEngine, HTML-тело) — как в
-  Gmail: крупная тема, отправитель/кому/дата, затем письмо. HTML письма — это
-  вход, полностью подконтрольный отправителю, поэтому он проходит через
-  `mail_content.py`: активные элементы вырезаются парсером, а движок получает
-  документ с `Content-Security-Policy`, запрещающей скрипты и — до явного
-  нажатия **Load remote content** — любую загрузку из сети. Трекинг-пиксель не
-  сработает, пока вы сами этого не разрешите, и разрешение действует только для
-  открытого письма.
-- **Фильтр** (кнопка в сайдбаре) открывает окно настроек отображения
-  (`display_settings.json`): сколько писем на аккаунт, только непрочитанные,
-  история с определённой даты, поиск по теме/отправителю.
-- **Ручной рефреш** (по умолчанию включён): сеть опрашивается только по кнопке
-  Refresh, а переключение папок мгновенно показывает локальную историю. Если
-  выключить — появляется ползунок **Тротлинг** (интервал автосинхронизации в
-  секундах); частые переключения вкладок схлопываются в один запрос.
+- The sidebar has **Inbox / Sent / Spam** tabs. Logical folders are matched to
+  real IMAP folder names via special-use flags (`\Sent`, `\Junk`, RFC 6154),
+  falling back to localized name heuristics — see `imap_smtp_adapter.py`.
+- **Message history** is kept locally in SQLite (`messages.db`,
+  `sqlite_message_store.py`) via the SQLAlchemy ORM: every refresh upserts
+  messages (with their bodies) keyed by the stable IMAP UID, so folders
+  remember their contents between runs, messages survive even if the server
+  removes them, and bodies open instantly without re-fetching.
+- Clicking a message opens it in reading mode (QtWebEngine, HTML body) —
+  Gmail-style: a large subject line, from/to/date, then the body. An email's
+  HTML is input fully controlled by the sender, so it's routed through
+  `mail_content.py`: active elements are stripped by a parser, and the
+  rendering engine gets a document with a `Content-Security-Policy` that
+  denies scripts and — until you explicitly click **Load remote content** —
+  any network load. A tracking pixel won't fire until you allow it, and that
+  permission only applies to the message you're viewing.
+- **Filter** (button in the sidebar) opens display settings
+  (`display_settings.json`): how many messages per account, unread-only,
+  history from a given date, search by subject/sender.
+- **Manual refresh** (on by default): the network is only polled on the
+  Refresh button, and switching folders instantly shows local history. If
+  turned off, a **Throttle** slider appears (auto-sync interval in seconds);
+  rapid tab switching collapses into a single request.
 
-Меню:
+Menu:
 
-- **Unified inbox** — письма со всех аккаунтов вместе, новые сверху.
-- **One account's inbox** — входящие одного ящика.
-- **Send a message** — отправка от выбранного аккаунта.
-- **Accounts** — добавить/удалить/показать. Провайдер определяется по домену
-  автоматически; для неизвестных доменов хосты/порты вводятся вручную.
+- **Unified inbox** — messages from every account together, newest first.
+- **One account's inbox** — a single mailbox's inbox.
+- **Send a message** — send from the selected account.
+- **Accounts** — add/remove/view. The provider is detected from the domain
+  automatically; for unknown domains, hosts/ports are entered manually.
 
-## Аккаунты и пароли
+## Accounts and passwords
 
-Аккаунты хранятся в `accounts.enc` — зашифрованном хранилище (AES-256-GCM,
-ключ выводится из мастер-пароля через Argon2id со случайной солью). Пароли
-ящиков и OAuth refresh-токены на диск в открытом виде не попадают. Мастер-пароль
-спрашивается один раз при запуске; минимальная длина — 12 символов, потому что
-именно он защищает все остальные учётные данные, а короткий подбирается офлайн
-за часы, если файл вообще утечёт.
+Accounts are stored in `accounts.enc` — an encrypted store (AES-256-GCM, the
+key derived from a master password via Argon2id with a random salt). Mailbox
+passwords and OAuth refresh tokens never touch disk in the clear. The master
+password is asked once on launch; the minimum length is 12 characters,
+because it protects every other credential, and a short one can be brute
+forced offline in hours if the file ever leaks.
 
-Старый плейнтекстовый `accounts.json` (см. `accounts.example.json`) при первом
-запуске импортируется и затем **уничтожается** — файл затирается и удаляется,
-а не переименовывается. Если вы обновляетесь с версии, которая оставляла
-`accounts.json.migrated`, этот остаток тоже будет затёрт при первом входе.
+The old plaintext `accounts.json` (see `accounts.example.json`) is imported on
+first run and then **destroyed** — the file is overwritten and deleted, not
+renamed. If you're upgrading from a version that left behind
+`accounts.json.migrated`, that leftover is also shredded on first login.
 
-Для Gmail, Mail.ru, Yandex, iCloud, Yahoo нужен **app password**, а не основной
-пароль от аккаунта — обычный пароль IMAP/SMTP не пропустят.
+Gmail, Mail.ru, Yandex, iCloud, and Yahoo require an **app password**, not
+your main account password — a regular password won't be accepted for
+IMAP/SMTP.
 
-## Outlook: вход через OAuth2
+## Outlook: signing in via OAuth2
 
-Microsoft отключила вход по паролю (basic auth) для личных Outlook/Hotmail —
-IMAP/SMTP там работают только по **OAuth2 (XOAUTH2)**. Программа поддерживает это
-через **device-code flow** (вход в браузере по коду, без своего сервера).
+Microsoft has disabled password-based (basic auth) login for personal
+Outlook/Hotmail accounts — IMAP/SMTP there only works via **OAuth2
+(XOAUTH2)**. The app supports this through the **device-code flow**
+(sign in via a browser and a short code, no local server needed).
 
-Один раз нужно зарегистрировать бесплатное приложение:
+You need to register a free app once:
 
 1. [Azure Portal](https://portal.azure.com) → **Microsoft Entra ID → App registrations → New registration**.
 2. **Supported account types**: personal Microsoft accounts.
-3. После создания: **Authentication → Allow public client flows → Yes**.
-4. Скопируй **Application (client) ID**.
+3. After creation: **Authentication → Allow public client flows → Yes**.
+4. Copy the **Application (client) ID**.
 
-Затем в программе: **Accounts → Add account**, введи адрес `@outlook.com` — пресет
-сам выберет OAuth2, спросит **Client ID**, покажет ссылку и код для входа. После
-подтверждения в браузере refresh-токен сохранится в `accounts.json`, а короткие
-access-токены программа обновляет сама.
+Then in the app: **Accounts → Add account**, enter an `@outlook.com` address —
+the preset will pick OAuth2 automatically, ask for the **Client ID**, and show
+a link and code to sign in with. Once you approve it in the browser, the
+refresh token is saved into the encrypted store, and the app refreshes the
+short-lived access tokens itself.
 
-Провайдеры OAuth вынесены в `oauth_token_provider.py` — Gmail добавляется как
-ещё одна запись (его device-code endpoint + scope `https://mail.google.com/`).
+OAuth providers live in `oauth_token_provider.py` — adding Gmail is just
+another entry (its device-code endpoint plus the
+`https://mail.google.com/` scope).
 
-## Тесты
+## Tests
 
 ```bash
 uv run pytest
 ```
 
-## Сборка и установщик
+## Building and installing
 
-Две команды: PyInstaller собирает приложение, Inno Setup упаковывает результат
-в один установочный файл.
+You don't need to build anything to use the app — download a ready-made
+installer from the [Releases](../../releases) page instead:
+
+- **Windows** — download `All-in-one-Email-Setup-<version>.exe` and run it.
+  No admin rights needed; it installs under
+  `%LOCALAPPDATA%\Programs\All-in-one-Email`, adds a Start Menu shortcut, and
+  registers an uninstaller. The installer isn't code-signed, so Windows
+  SmartScreen will show a warning on first run — click **More info → Run
+  anyway**.
+- **Linux** — download `All-in-one-Email-Setup-<version>.sh` and run it with
+  `sh All-in-one-Email-Setup-<version>.sh`. PyInstaller can't cross-compile,
+  so this script clones the tagged source into a temp directory, builds the
+  app locally, installs it under `~/.local/opt/email-aggregator` with a
+  desktop menu entry, and deletes the cloned source afterwards — nothing but
+  the installed program is left behind.
+
+Once installed, the app is fully self-contained: it doesn't depend on this
+repository, Python, or `uv` being present on the machine. Your data
+(`accounts.enc`, `messages.db`, settings) lives separately in
+`%APPDATA%\EmailAggregator` (Windows) or the platform equivalent, and survives
+both uninstalling and deleting this repo.
+
+### Building it yourself
+
+Two scripts in the repo root automate the whole pipeline — checking for `uv`
+and the platform's packaging tool, installing them if missing, building with
+PyInstaller, and packaging the result:
 
 ```bash
-uv run pyinstaller --noconfirm --clean All-in-one-Email.spec
+# Windows (run in the repo — this is a dev-side build script, not what end
+# users run):
+windows_installer.bat
 ```
 
 ```bash
-"%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" installer\All-in-one-Email.iss
+# Linux (this is the same script published in Releases — see above):
+sh All-in-one-Email-Setup-<version>.sh
 ```
 
-На выходе — `installer/Output/All-in-one-Email-Setup-<версия>.exe` (~155 МБ).
-Пользователь скачивает его, запускает, установка идёт в
-`%LOCALAPPDATA%\Programs\All-in-one-Email` без запроса прав администратора,
-ярлык появляется в меню «Пуск», удаление — через «Установка и удаление
-программ». Inno Setup ставится через `winget install JRSoftware.InnoSetup`.
+`windows_installer.bat` produces
+`installer/Output/All-in-one-Email-Setup-<version>.exe` (~155 MB, built with
+PyInstaller + Inno Setup) and copies it into the repo root, then cleans up
+PyInstaller's `dist/`/`build/` scaffolding.
 
-Несколько вещей, которые ломаются, если про них забыть:
+A few things that break if forgotten:
 
-- **`AppId` в `installer/All-in-one-Email.iss` менять нельзя.** По нему Windows
-  опознаёт новую сборку как обновление старой; с другим GUID пользователь
-  получит две параллельно установленные копии.
-- **Данные при удалении не трогаются.** `accounts.enc`, `messages.db` и
-  настройки лежат в `%APPDATA%\EmailAggregator` (см. `_redirect_data_when_frozen`
-  в `qt_gui.py`), деинсталлятор их не удаляет — переустановка находит историю
-  писем и аккаунты на месте.
-- **`collect_all('PySide6')` в `.spec` возвращать не надо.** Он дублировал
-  каждую библиотеку Qt в бандле; встроенный хук PyInstaller собирает нужное сам.
-- **Установщик не подписан.** При первом запуске Windows покажет SmartScreen —
-  «Подробнее → Всё равно выполнить». Убирается только сертификатом для подписи
-  кода, к сборке это отношения не имеет.
-
-После пересборки результат оказывается в `dist/All-in-one-Email/`; в этом
-репозитории `All-in-one-Email.exe` и `_internal/` лежат в корне рядом с `src/`,
-куда их нужно переложить вручную — расположить их так средствами `.spec`
-нельзя, PyInstaller всегда пишет в `dist/<имя>/`.
+- **Don't change `AppId` in `installer/All-in-one-Email.iss`.** Windows uses
+  it to recognize a new build as an upgrade of the old one; a different GUID
+  means the user ends up with two installations side by side.
+- **Uninstalling doesn't touch user data.** `accounts.enc`, `messages.db`,
+  and settings live in `%APPDATA%\EmailAggregator`
+  (see `_redirect_data_when_frozen` in `qt_gui.py`); the uninstaller leaves
+  them alone, so reinstalling finds mail history and accounts still there.
+- **Don't add `collect_all('PySide6')` back to the `.spec`.** It used to
+  duplicate every Qt library in the bundle; PyInstaller's built-in hook
+  already collects what's needed.
+- **The Windows installer isn't code-signed.** SmartScreen will warn on first
+  run; that's only fixed by a code-signing certificate, unrelated to the
+  build itself.
+- **Releasing a new version means a new git tag.** `All-in-one-Email-Setup-<version>.sh`
+  clones a pinned tag (`VERSION_TAG` at the top of the script), not the
+  moving `main` branch — so a published release keeps building the exact code
+  it shipped with, even after `main` moves on. Bump `VERSION_TAG` to match
+  the new tag before publishing the next release.

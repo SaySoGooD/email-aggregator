@@ -34,6 +34,13 @@ dist/
 installer/Output/
 *.egg-info/
 
+# Release installers — too large for git (exe) or just a renamed copy of
+# linux_installer.sh made for a Release upload; both are published as GitHub
+# Release assets via `gh release upload`, not committed here. The tracked
+# source script stays linux_installer.sh.
+/All-in-one-Email-Setup-*.exe
+/All-in-one-Email-Setup-*.sh
+
 # Coverage
 .coverage
 .coverage.*
